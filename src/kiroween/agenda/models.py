@@ -23,6 +23,8 @@ class ItemType(str, Enum):
     OBLIGATION = "obligation"
     QUESTION = "question"
     ACTION_ITEM = "action_item"
+    NOTE = "note"
+    ANNOUNCEMENT = "announcement"
 
 
 class ItemStatus(str, Enum):
@@ -33,6 +35,8 @@ class ItemStatus(str, Enum):
     COMPLETED = "completed"
     DEFERRED = "deferred"
     CANCELLED = "cancelled"
+    STALE = "stale"
+    DONE = "done"  # Alias for completed, kept for compatibility
 
 
 def generate_uuid() -> str:
@@ -55,22 +59,53 @@ class AgendaItem(Base):
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_snippet: Mapped[str | None] = mapped_column(
+        Text, nullable=True, description="Short chunk of original message text"
+    )
 
-    # Slack source tracking
+    # Workspace and source tracking
+    workspace_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     source_channel_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     source_channel_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     source_thread_ts: Mapped[str | None] = mapped_column(String(50), nullable=True)
     source_message_ts: Mapped[str | None] = mapped_column(String(50), nullable=True)
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # Assignment and scheduling
-    assigned_to_user_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Assignment and ownership
+    assigned_to_user_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, description="Slack user ID or 'me'"
+    )
     assigned_to_user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    requestor_user_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, description="Who asked/requested this"
+    )
+    requestor_user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, description="User who created this item"
+    )
+
+    # Project and organization
+    project: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, description="Logical grouping/project name"
+    )
+    topic: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, description="Topic/category"
+    )
+    labels: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, description="Comma-separated free-form tags"
+    )
+
+    # Scheduling
     due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, description="Alias for due_date"
+    )
 
     # Metadata
     priority: Mapped[int] = mapped_column(Integer, default=0)  # 0=normal, 1=high, 2=urgent
-    tags: Mapped[str | None] = mapped_column(String(500), nullable=True)  # comma-separated
+    tags: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, description="Comma-separated tags (legacy)"
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -94,13 +129,23 @@ class AgendaItem(Base):
             "status": self.status.value,
             "title": self.title,
             "description": self.description,
+            "raw_snippet": self.raw_snippet,
+            "workspace_id": self.workspace_id,
             "source_channel_id": self.source_channel_id,
             "source_channel_name": self.source_channel_name,
             "source_thread_ts": self.source_thread_ts,
+            "source_message_ts": self.source_message_ts,
             "source_url": self.source_url,
             "assigned_to_user_id": self.assigned_to_user_id,
             "assigned_to_user_name": self.assigned_to_user_name,
+            "requestor_user_id": self.requestor_user_id,
+            "requestor_user_name": self.requestor_user_name,
+            "created_by_user_id": self.created_by_user_id,
+            "project": self.project,
+            "topic": self.topic,
+            "labels": self.labels.split(",") if self.labels else [],
             "due_date": self.due_date.isoformat() if self.due_date else None,
+            "due_at": self.due_at.isoformat() if self.due_at else None,
             "priority": self.priority,
             "tags": self.tags.split(",") if self.tags else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -127,3 +172,194 @@ class AgendaItemHistory(Base):
     changed_by: Mapped[str | None] = mapped_column(String(50), nullable=True)  # Slack user_id
 
     item: Mapped["AgendaItem"] = relationship(back_populates="history")
+
+
+class UserProfile(Base):
+    """User profile with notification preferences and focus settings."""
+
+    __tablename__ = "user_profiles"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid
+    )
+    workspace_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    user_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # Notification preferences (JSON stored as text)
+    notification_preferences: Mapped[str | None] = mapped_column(
+        Text, nullable=True, description="JSON: instant_for, batch_everything, quiet_hours"
+    )
+    focus_mode_enabled: Mapped[bool] = mapped_column(default=False)
+    focus_mode_settings: Mapped[str | None] = mapped_column(
+        Text, nullable=True, description="JSON: top_n_tasks, suppress_low_priority"
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class WorkspaceConfig(Base):
+    """Workspace configuration: which channels to watch, what's important."""
+
+    __tablename__ = "workspace_configs"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid
+    )
+    workspace_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    workspace_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # Watched channels (JSON array stored as text)
+    watched_channels: Mapped[str | None] = mapped_column(
+        Text, nullable=True, description="JSON array of channel IDs to watch"
+    )
+    important_channels: Mapped[str | None] = mapped_column(
+        Text, nullable=True, description="JSON array of important channel IDs"
+    )
+    ignored_channels: Mapped[str | None] = mapped_column(
+        Text, nullable=True, description="JSON array of channel IDs to ignore"
+    )
+
+    # Configuration (JSON stored as text)
+    config: Mapped[str | None] = mapped_column(
+        Text, nullable=True, description="JSON: additional workspace settings"
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class View(Base):
+    """Saved filter views for agenda items."""
+
+    __tablename__ = "views"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid
+    )
+    workspace_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, description="None for shared/workspace views"
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_predefined: Mapped[bool] = mapped_column(default=False)
+
+    # Filter criteria (JSON stored as text)
+    filters: Mapped[str] = mapped_column(
+        Text, nullable=False, description="JSON: assignees, project, type, date_range, channel, status"
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ThreadTitle(Base):
+    """Virtual thread titles inferred from Slack threads."""
+
+    __tablename__ = "thread_titles"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid
+    )
+    workspace_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    channel_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    thread_ts: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    inferred_by: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, description="'first_message' or 'llm'"
+    )
+
+    # Thread metadata
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_resolved: Mapped[bool] = mapped_column(default=False)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class Decision(Base):
+    """Extracted decisions from threads."""
+
+    __tablename__ = "decisions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid
+    )
+    workspace_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    agenda_item_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agenda_items.id", ondelete="SET NULL"), nullable=True
+    )
+    thread_ts: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    channel_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    decision_message_ts: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, description="Message where decision was made"
+    )
+
+    decision_text: Mapped[str] = mapped_column(Text, nullable=False)
+    project: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    involved_user_ids: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, description="Comma-separated user IDs"
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    agenda_item: Mapped["AgendaItem"] = relationship()
+
+
+class FAQAnswer(Base):
+    """FAQ and canonical answers derived from threads."""
+
+    __tablename__ = "faq_answers"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid
+    )
+    workspace_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    source_thread_ts: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source_channel_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source_message_ts: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Metadata
+    tags: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_canonical: Mapped[bool] = mapped_column(default=False)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )

@@ -1,9 +1,19 @@
 """LangChain tools for agenda operations."""
 
+from datetime import datetime
+from typing import Any
+
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from kiroween.agenda.notifications import get_digest_service
+from kiroween.agenda.ingestion import get_ingestion_service
+from kiroween.agenda.search import get_knowledge_service, get_search_service
 from kiroween.agenda.service import get_agenda_service
+from kiroween.agenda.task_management import get_task_management_service
+from kiroween.agenda.thread_management import get_thread_management_service
+from kiroween.agenda.views import get_views_service
+from kiroween.agenda.workflows import get_personal_workflows_service
 from kiroween.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -190,6 +200,237 @@ async def agenda_db_search(
         return f"Error searching agenda items: {e}"
 
 
+@tool
+async def ingest_slack_message(
+    message_text: str,
+    user_id: str,
+    channel_id: str,
+    message_ts: str,
+    workspace_id: str | None = None,
+    thread_ts: str | None = None,
+) -> str:
+    """Ingest a Slack message and automatically create agenda items.
+
+    Analyzes the message to detect tasks, decisions, questions, etc.
+    and creates appropriate agenda items with extracted metadata.
+    """
+    ingestion = get_ingestion_service()
+    try:
+        message = {
+            "text": message_text,
+            "user": user_id,
+            "channel": channel_id,
+            "ts": message_ts,
+            "thread_ts": thread_ts,
+        }
+        item = await ingestion.ingest_message(message, workspace_id)
+        if item:
+            return f"Ingested message as {item.type.value}: '{item.title}' (ID: {item.id})"
+        return "Message ingested but no agenda item created (likely not relevant)."
+    except Exception as e:
+        logger.error("ingest_message_error", error=str(e))
+        return f"Error ingesting message: {e}"
+
+
+@tool
+async def get_my_tasks(
+    user_id: str,
+    workspace_id: str | None = None,
+    include_completed: bool = False,
+) -> str:
+    """Get all tasks assigned to me, grouped by due date."""
+    views = get_views_service()
+    try:
+        tasks = await views.get_my_tasks(user_id, workspace_id, include_completed)
+        if not tasks:
+            return "No tasks found."
+
+        results = []
+        for task in tasks:
+            due_str = f" (Due: {task.due_date.strftime('%Y-%m-%d')})" if task.due_date else ""
+            priority_str = " 🔴" if task.priority == 2 else " 🟡" if task.priority == 1 else ""
+            results.append(f"• {task.title}{priority_str}{due_str}")
+
+        return f"Your tasks ({len(tasks)}):\n\n" + "\n".join(results)
+    except Exception as e:
+        logger.error("get_my_tasks_error", error=str(e))
+        return f"Error getting tasks: {e}"
+
+
+@tool
+async def update_task_status(
+    task_id: str,
+    status: str,
+    changed_by: str | None = None,
+) -> str:
+    """Update task status (open, in_progress, completed, deferred, stale)."""
+    task_mgmt = get_task_management_service()
+    try:
+        item = await task_mgmt.update_task_status(task_id, status, changed_by)
+        if item:
+            return f"Updated task '{item.title}' to status: {status}"
+        return f"Task {task_id} not found."
+    except Exception as e:
+        logger.error("update_task_status_error", error=str(e))
+        return f"Error updating task status: {e}"
+
+
+@tool
+async def get_overdue_tasks(
+    user_id: str | None = None,
+    workspace_id: str | None = None,
+) -> str:
+    """Get all overdue tasks."""
+    task_mgmt = get_task_management_service()
+    try:
+        tasks = await task_mgmt.get_overdue_tasks(user_id, workspace_id)
+        if not tasks:
+            return "No overdue tasks."
+
+        results = []
+        for task in tasks:
+            days_overdue = (datetime.utcnow() - task.due_date).days if task.due_date else 0
+            results.append(f"• {task.title} ({days_overdue} days overdue)")
+
+        return f"Overdue tasks ({len(tasks)}):\n\n" + "\n".join(results)
+    except Exception as e:
+        logger.error("get_overdue_tasks_error", error=str(e))
+        return f"Error getting overdue tasks: {e}"
+
+
+@tool
+async def generate_morning_digest(
+    user_id: str,
+    workspace_id: str | None = None,
+) -> str:
+    """Generate morning digest: tasks due today, new tasks, important decisions."""
+    digest = get_digest_service()
+    try:
+        digest_data = await digest.generate_morning_digest(user_id, workspace_id)
+        return await digest.format_digest_for_slack(digest_data, "morning_digest")
+    except Exception as e:
+        logger.error("generate_morning_digest_error", error=str(e))
+        return f"Error generating morning digest: {e}"
+
+
+@tool
+async def extract_decisions_from_thread(
+    thread_messages: list[dict[str, Any]],
+    workspace_id: str,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+) -> str:
+    """Extract decisions from a Slack thread."""
+    thread_mgmt = get_thread_management_service()
+    try:
+        decisions = await thread_mgmt.extract_decisions_from_thread(
+            thread_messages, workspace_id, channel_id, thread_ts
+        )
+        if not decisions:
+            return "No decisions found in thread."
+
+        results = []
+        for decision in decisions:
+            results.append(f"• {decision.decision_text}")
+
+        return f"Extracted {len(decisions)} decision(s):\n\n" + "\n".join(results)
+    except Exception as e:
+        logger.error("extract_decisions_error", error=str(e))
+        return f"Error extracting decisions: {e}"
+
+
+@tool
+async def search_decisions_about(
+    topic: str,
+    workspace_id: str | None = None,
+    limit: int = 20,
+) -> str:
+    """Search for decisions about a specific topic."""
+    search = get_search_service()
+    try:
+        decisions = await search.search_decisions_about(topic, workspace_id, limit)
+        if not decisions:
+            return f"No decisions found about '{topic}'."
+
+        results = []
+        for decision in decisions:
+            results.append(f"• {decision.title} ({decision.created_at.strftime('%Y-%m-%d')})")
+
+        return f"Decisions about '{topic}' ({len(decisions)}):\n\n" + "\n".join(results)
+    except Exception as e:
+        logger.error("search_decisions_error", error=str(e))
+        return f"Error searching decisions: {e}"
+
+
+@tool
+async def find_similar_question(
+    question: str,
+    workspace_id: str | None = None,
+) -> str:
+    """Find if a similar question has been answered before (FAQ lookup)."""
+    knowledge = get_knowledge_service()
+    try:
+        faq = await knowledge.find_similar_question(question, workspace_id)
+        if faq:
+            return f"Similar question found:\n\nQ: {faq.question}\nA: {faq.answer}"
+        return "No similar questions found in FAQ."
+    except Exception as e:
+        logger.error("find_similar_question_error", error=str(e))
+        return f"Error finding similar question: {e}"
+
+
+@tool
+async def snooze_task(
+    task_id: str,
+    hours: int,
+    changed_by: str | None = None,
+) -> str:
+    """Snooze a task for N hours (updates due date)."""
+    workflows = get_personal_workflows_service()
+    try:
+        item = await workflows.snooze_task(task_id, hours, changed_by)
+        if item:
+            return f"Snoozed task '{item.title}' for {hours} hours. New due date: {item.due_date}"
+        return f"Task {task_id} not found."
+    except Exception as e:
+        logger.error("snooze_task_error", error=str(e))
+        return f"Error snoozing task: {e}"
+
+
+@tool
+async def reassign_task(
+    task_id: str,
+    new_assignee_user_id: str,
+    new_assignee_user_name: str | None = None,
+    changed_by: str | None = None,
+) -> str:
+    """Reassign a task to a different user."""
+    workflows = get_personal_workflows_service()
+    try:
+        item = await workflows.reassign_task(
+            task_id, new_assignee_user_id, new_assignee_user_name, changed_by
+        )
+        if item:
+            return f"Reassigned task '{item.title}' to {new_assignee_user_name or new_assignee_user_id}"
+        return f"Task {task_id} not found."
+    except Exception as e:
+        logger.error("reassign_task_error", error=str(e))
+        return f"Error reassigning task: {e}"
+
+
 def get_agenda_tools() -> list:
     """Get all agenda-related tools."""
-    return [agenda_db_upsert_item, agenda_db_search]
+    return [
+        agenda_db_upsert_item,
+        agenda_db_search,
+        ingest_slack_message,
+        get_my_tasks,
+        update_task_status,
+        get_overdue_tasks,
+        generate_morning_digest,
+        extract_decisions_from_thread,
+        search_decisions_about,
+        find_similar_question,
+        snooze_task,
+        reassign_task,
+    ]
