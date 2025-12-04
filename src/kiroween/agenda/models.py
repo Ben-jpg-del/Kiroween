@@ -60,7 +60,7 @@ class AgendaItem(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_snippet: Mapped[str | None] = mapped_column(
-        Text, nullable=True, description="Short chunk of original message text"
+        Text, nullable=True
     )
 
     # Workspace and source tracking
@@ -73,38 +73,38 @@ class AgendaItem(Base):
 
     # Assignment and ownership
     assigned_to_user_id: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, description="Slack user ID or 'me'"
+        String(50), nullable=True
     )
     assigned_to_user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     requestor_user_id: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, description="Who asked/requested this"
+        String(50), nullable=True
     )
     requestor_user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_by_user_id: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, description="User who created this item"
+        String(50), nullable=True
     )
 
     # Project and organization
     project: Mapped[str | None] = mapped_column(
-        String(200), nullable=True, description="Logical grouping/project name"
+        String(200), nullable=True
     )
     topic: Mapped[str | None] = mapped_column(
-        String(200), nullable=True, description="Topic/category"
+        String(200), nullable=True
     )
     labels: Mapped[str | None] = mapped_column(
-        String(500), nullable=True, description="Comma-separated free-form tags"
+        String(500), nullable=True
     )
 
     # Scheduling
     due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, description="Alias for due_date"
+        DateTime, nullable=True
     )
 
     # Metadata
     priority: Mapped[int] = mapped_column(Integer, default=0)  # 0=normal, 1=high, 2=urgent
     tags: Mapped[str | None] = mapped_column(
-        String(500), nullable=True, description="Comma-separated tags (legacy)"
+        String(500), nullable=True
     )
 
     # Timestamps
@@ -189,11 +189,11 @@ class UserProfile(Base):
 
     # Notification preferences (JSON stored as text)
     notification_preferences: Mapped[str | None] = mapped_column(
-        Text, nullable=True, description="JSON: instant_for, batch_everything, quiet_hours"
+        Text, nullable=True
     )
     focus_mode_enabled: Mapped[bool] = mapped_column(default=False)
     focus_mode_settings: Mapped[str | None] = mapped_column(
-        Text, nullable=True, description="JSON: top_n_tasks, suppress_low_priority"
+        Text, nullable=True
     )
 
     # Timestamps
@@ -218,18 +218,18 @@ class WorkspaceConfig(Base):
 
     # Watched channels (JSON array stored as text)
     watched_channels: Mapped[str | None] = mapped_column(
-        Text, nullable=True, description="JSON array of channel IDs to watch"
+        Text, nullable=True
     )
     important_channels: Mapped[str | None] = mapped_column(
-        Text, nullable=True, description="JSON array of important channel IDs"
+        Text, nullable=True
     )
     ignored_channels: Mapped[str | None] = mapped_column(
-        Text, nullable=True, description="JSON array of channel IDs to ignore"
+        Text, nullable=True
     )
 
     # Configuration (JSON stored as text)
     config: Mapped[str | None] = mapped_column(
-        Text, nullable=True, description="JSON: additional workspace settings"
+        Text, nullable=True
     )
 
     # Timestamps
@@ -251,7 +251,7 @@ class View(Base):
     )
     workspace_id: Mapped[str] = mapped_column(String(50), nullable=False)
     user_id: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, description="None for shared/workspace views"
+        String(50), nullable=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -259,7 +259,7 @@ class View(Base):
 
     # Filter criteria (JSON stored as text)
     filters: Mapped[str] = mapped_column(
-        Text, nullable=False, description="JSON: assignees, project, type, date_range, channel, status"
+        Text, nullable=False
     )
 
     # Timestamps
@@ -284,7 +284,7 @@ class ThreadTitle(Base):
     thread_ts: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     inferred_by: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, description="'first_message' or 'llm'"
+        String(50), nullable=True
     )
 
     # Thread metadata
@@ -316,13 +316,13 @@ class Decision(Base):
     thread_ts: Mapped[str | None] = mapped_column(String(50), nullable=True)
     channel_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     decision_message_ts: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, description="Message where decision was made"
+        String(50), nullable=True
     )
 
     decision_text: Mapped[str] = mapped_column(Text, nullable=False)
     project: Mapped[str | None] = mapped_column(String(200), nullable=True)
     involved_user_ids: Mapped[str | None] = mapped_column(
-        String(500), nullable=True, description="Comma-separated user IDs"
+        String(500), nullable=True
     )
 
     # Timestamps
