@@ -27,6 +27,8 @@ def route_by_intent(state: AgentState) -> str:
         return "tracker"
     elif intent == "extract_decisions":
         return "extractor"
+    elif intent == "vision_catchup":
+        return "vision_summarizer"
     else:
         # For send_message and general_query, go directly to responder
         return "responder"

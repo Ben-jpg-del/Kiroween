@@ -36,3 +36,24 @@ def get_llm_with_tools(tools: list) -> ChatOpenAI:
     """
     llm = get_llm()
     return llm.bind_tools(tools)
+
+
+def get_llm_for_vision() -> ChatOpenAI:
+    """Get LLM instance configured for vision tasks.
+
+    Uses GPT-4o which supports multi-modal input (text + images).
+    Lower temperature for more consistent structured output.
+
+    Returns:
+        ChatOpenAI instance configured for vision processing.
+    """
+    settings = get_settings()
+
+    logger.debug("initializing_vision_llm", model=settings.llm_model)
+
+    return ChatOpenAI(
+        model=settings.llm_model,
+        temperature=0.1,
+        api_key=settings.openai_api_key,
+        max_tokens=4096,
+    )

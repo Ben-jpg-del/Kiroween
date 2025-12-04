@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gpt-4o", description="LLM model identifier")
     llm_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
 
+    # Vision Configuration
+    vision_enabled: bool = Field(
+        default=True, description="Enable vision capabilities for thread summarization"
+    )
+    vision_max_images: int = Field(
+        default=10, ge=1, le=20, description="Maximum images to process per request"
+    )
+    vision_image_target_size: int = Field(
+        default=1024, ge=512, le=2048, description="Target max dimension for image resizing"
+    )
+
     # Supabase Configuration
     supabase_url: str = Field(..., description="Supabase project URL")
     supabase_anon_key: str = Field(..., description="Supabase public anon key")

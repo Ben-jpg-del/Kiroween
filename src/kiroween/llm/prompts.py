@@ -48,12 +48,15 @@ These tools manage your persistent task database:
 ROUTER_PROMPT = """Analyze the user's request and classify their intent.
 
 Possible intents:
-- summarize_missed: User wants to catch up on messages they missed
+- vision_catchup: User wants to catch up on messages/threads with visual content analysis (DEFAULT for summarization requests)
+- summarize_missed: User wants text-only summary of messages (use when vision is disabled)
 - search_previous: User is looking for past discussions or answers
 - track_obligations: User wants to see tasks, obligations, or what they owe
 - extract_decisions: User wants to extract decisions/tasks from a thread
 - send_message: User wants to post something to Slack
 - general_query: General question or request
+
+IMPORTANT: When user asks to "summarize", "catch up", "what did I miss", or similar requests for channel/thread summaries, use "vision_catchup" as the intent. This enables image-aware summarization.
 
 Also extract relevant parameters:
 - channel: The Slack channel mentioned (e.g., "#engineering", "C123456")
@@ -96,4 +99,50 @@ For each item found, identify:
 6. Priority: normal, high, or urgent
 
 Output as a list of structured items that can be saved to the agenda database.
+"""
+
+VISION_SUMMARIZER_PROMPT = """You are an expert at analyzing Slack conversations with images and providing structured summaries for newcomers.
+
+Analyze the provided thread messages and any attached images to create a comprehensive catch-up summary.
+
+## Your Task
+1. Read through all messages and examine any images
+2. Identify key decisions, action items, and important context
+3. Note any unresolved questions or blockers
+4. Extract relevant links mentioned in the discussion
+
+## Output Format
+Respond with a JSON object containing:
+
+```json
+{
+  "key_decisions": [
+    "Decision 1 - brief description of what was decided",
+    "Decision 2 - another key decision made"
+  ],
+  "unresolved_questions": [
+    "Question that still needs an answer",
+    "Another open question or blocker"
+  ],
+  "recommended_links": [
+    {"label": "Link description", "url": "https://..."},
+    {"label": "Another relevant link", "url": "https://..."}
+  ],
+  "explain_for_newcomer": "A 2-4 sentence summary explaining the context and current state of the discussion for someone joining fresh. Include what the thread is about, what progress has been made, and what's happening next."
+}
+```
+
+## Guidelines
+- key_decisions: Maximum 3 items. Only include actual decisions made, not proposals.
+- unresolved_questions: Maximum 4 items. Include blockers, open questions, or things waiting on someone.
+- recommended_links: Include links mentioned in messages that would be helpful for context.
+- explain_for_newcomer: Write as if explaining to a new team member joining mid-conversation.
+
+## Image Analysis
+When images are present:
+- Describe what's shown (diagrams, mockups, screenshots, charts)
+- Explain how images relate to the discussion
+- Note any text or data visible in images that's relevant
+
+Always respond with valid JSON only. Do not include any text before or after the JSON object.
 """

@@ -11,6 +11,7 @@ from kiroween.agent.nodes.router import router_node
 from kiroween.agent.nodes.searcher import searcher_node
 from kiroween.agent.nodes.summarizer import summarizer_node
 from kiroween.agent.nodes.tracker import tracker_node
+from kiroween.agent.nodes.vision_summarizer import vision_summarizer_node
 from kiroween.agent.state import AgentState
 from kiroween.utils.logging import get_logger
 
@@ -27,9 +28,9 @@ def build_graph(tools: list[BaseTool]) -> StateGraph:
         Compiled StateGraph ready for invocation.
 
     Graph structure:
-        START → router → [summarizer|searcher|tracker|extractor|responder]
-                              ↓           ↓          ↓           ↓
-                         responder ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ←
+        START → router → [summarizer|searcher|tracker|extractor|vision_summarizer|responder]
+                              ↓           ↓          ↓           ↓              ↓
+                         responder ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ← ←
                               ↓
                          tools_condition
                               ↓
@@ -49,6 +50,7 @@ def build_graph(tools: list[BaseTool]) -> StateGraph:
     builder.add_node("searcher", searcher_node)
     builder.add_node("tracker", tracker_node)
     builder.add_node("extractor", extractor_node)
+    builder.add_node("vision_summarizer", vision_summarizer_node)
     builder.add_node("responder", responder)
     builder.add_node("tools", ToolNode(tools))
 
@@ -64,6 +66,7 @@ def build_graph(tools: list[BaseTool]) -> StateGraph:
             "searcher": "searcher",
             "tracker": "tracker",
             "extractor": "extractor",
+            "vision_summarizer": "vision_summarizer",
             "responder": "responder",
         },
     )
@@ -73,6 +76,7 @@ def build_graph(tools: list[BaseTool]) -> StateGraph:
     builder.add_edge("searcher", "responder")
     builder.add_edge("tracker", "responder")
     builder.add_edge("extractor", "responder")
+    builder.add_edge("vision_summarizer", "responder")
 
     # Responder can call tools or finish
     builder.add_conditional_edges(

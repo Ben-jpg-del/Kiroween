@@ -6,6 +6,16 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph import add_messages
 
 
+class SlackFile(TypedDict):
+    """Slack file attachment data."""
+
+    id: str
+    name: str
+    mimetype: str
+    url_private: str
+    size: int
+
+
 class SlackMessage(TypedDict):
     """Structured Slack message data."""
 
@@ -16,6 +26,7 @@ class SlackMessage(TypedDict):
     text: str
     timestamp: str
     reactions: list[str]
+    files: list[SlackFile]
 
 
 class AgendaItemData(TypedDict):
@@ -50,6 +61,7 @@ Intent = Literal[
     "extract_decisions",
     "send_message",
     "general_query",
+    "vision_catchup",
 ]
 
 
@@ -85,6 +97,9 @@ class AgentState(TypedDict):
     response: str | None
     error: str | None
 
+    # Vision processing output
+    vision_summary: dict | None
+
 
 def create_initial_state() -> AgentState:
     """Create an initial empty agent state."""
@@ -102,4 +117,5 @@ def create_initial_state() -> AgentState:
         "pending_agenda_updates": [],
         "response": None,
         "error": None,
+        "vision_summary": None,
     }

@@ -38,3 +38,21 @@ class ConfigurationError(KiroweenError):
     """Invalid or missing configuration."""
 
     pass
+
+
+class SlackImageDownloadError(KiroweenError):
+    """Failed to download image from Slack."""
+
+    pass
+
+
+class VisionProcessingError(KiroweenError):
+    """Error processing image for vision model."""
+
+    pass
+
+
+class ImageCompressionError(KiroweenError):
+    """Failed to compress or resize image."""
+
+    pass
