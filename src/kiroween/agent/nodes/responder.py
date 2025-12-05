@@ -3,6 +3,7 @@
 from langchain_core.messages import AIMessage, SystemMessage
 
 from kiroween.agent.state import AgentState
+from kiroween.config import get_settings
 from kiroween.llm.prompts import SYSTEM_PROMPT
 from kiroween.llm.provider import get_llm_with_tools
 from kiroween.utils.logging import get_logger
@@ -35,7 +36,15 @@ async def responder_node(state: AgentState, tools: list) -> dict:
     )
 
     # Build context based on intent
+    settings = get_settings()
     context_parts = [SYSTEM_PROMPT]
+
+    # Add user context if available
+    if settings.slack_user_id:
+        context_parts.append(
+            f"\nCurrent user ID: {settings.slack_user_id}"
+            f"\nWhen the user says 'me' or 'my tasks', use this user ID: {settings.slack_user_id}"
+        )
 
     if intent == "summarize_missed":
         channel = state.get("target_channel", "the channel")

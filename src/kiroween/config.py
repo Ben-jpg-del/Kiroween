@@ -1,17 +1,22 @@
 """Configuration management using pydantic-settings."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Find the project root (where .env should be)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+ENV_FILE = PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -19,6 +24,9 @@ class Settings(BaseSettings):
 
     # Slack MCP Configuration
     slack_mcp_xoxp_token: str = Field(..., description="Slack user OAuth token")
+    slack_user_id: str | None = Field(
+        default=None, description="Your Slack user ID (e.g., U01234567)"
+    )
     slack_mcp_transport: Literal["stdio", "sse", "streamable_http"] = Field(
         default="stdio", description="MCP transport protocol"
     )
@@ -57,6 +65,13 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = Field(default=False)
     langchain_api_key: str | None = Field(default=None)
     langchain_project: str = Field(default="kiroween-slack-agent")
+
+    # Redis Configuration
+    redis_host: str = Field(default="localhost", description="Redis host")
+    redis_port: int = Field(default=6379, description="Redis port")
+    redis_db: int = Field(default=0, description="Redis database number")
+    redis_password: str | None = Field(default=None, description="Redis password (optional)")
+    redis_ttl: int = Field(default=3600, description="Default cache TTL in seconds")
 
 
 @lru_cache
