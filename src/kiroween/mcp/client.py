@@ -1,5 +1,6 @@
 """MCP Client wrapper for Slack integration using langchain-mcp-adapters."""
 
+import asyncio
 from typing import Any
 
 from langchain_core.tools import BaseTool
@@ -47,6 +48,11 @@ class SlackMCPManager:
                 tools_count=len(self._tools),
                 tool_names=[t.name for t in self._tools],
             )
+
+            # Wait for MCP server to finish caching users and channels
+            logger.info("waiting_for_mcp_cache", wait_seconds=3)
+            await asyncio.sleep(3)
+            logger.info("mcp_cache_ready")
 
         except Exception as e:
             logger.error("slack_mcp_connection_failed", error=str(e))
