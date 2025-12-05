@@ -50,8 +50,9 @@ class SlackMCPManager:
             )
 
             # Wait for MCP server to finish caching users and channels
-            logger.info("waiting_for_mcp_cache", wait_seconds=8)
-            await asyncio.sleep(8)
+            # This can take 15-30 seconds depending on workspace size
+            logger.info("waiting_for_mcp_cache", wait_seconds=20)
+            await asyncio.sleep(20)
             logger.info("mcp_cache_ready")
 
         except Exception as e:
