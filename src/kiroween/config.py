@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     langchain_api_key: str | None = Field(default=None)
     langchain_project: str = Field(default="kiroween-slack-agent")
 
+    # Redis Configuration
+    redis_host: str = Field(default="localhost", description="Redis host")
+    redis_port: int = Field(default=6379, description="Redis port")
+    redis_db: int = Field(default=0, description="Redis database number")
+    redis_password: str | None = Field(default=None, description="Redis password (optional)")
+    redis_ttl: int = Field(default=3600, description="Default cache TTL in seconds")
+
 
 @lru_cache
 def get_settings() -> Settings:

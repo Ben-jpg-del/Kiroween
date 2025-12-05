@@ -7,6 +7,7 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from kiroween.config import get_settings
+from kiroween.utils.cache import get_cache
 from kiroween.utils.errors import MCPConnectionError
 from kiroween.utils.logging import get_logger
 
@@ -36,11 +37,25 @@ class SlackMCPManager:
         settings = get_settings()
 
         try:
+            # Connect to Redis cache first
+            cache = get_cache()
+            await cache.connect()
+
             logger.info("connecting_to_slack_mcp", transport=settings.slack_mcp_transport)
 
             config = self._build_config(settings)
             self._client = MultiServerMCPClient(config)
-            self._tools = await self._client.get_tools()
+            raw_tools = await self._client.get_tools()
+
+            # Wrap tools with caching if Redis is available
+            if cache.is_connected:
+                from kiroween.mcp.cached_tools import wrap_tools_with_cache
+
+                self._tools = wrap_tools_with_cache(raw_tools)
+                logger.info("tools_wrapped_with_cache", count=len(self._tools))
+            else:
+                self._tools = raw_tools
+                logger.warning("redis_unavailable_using_uncached_tools")
 
             self._connected = True
             logger.info(
@@ -49,11 +64,32 @@ class SlackMCPManager:
                 tool_names=[t.name for t in self._tools],
             )
 
-            # Wait for MCP server to finish caching users and channels
-            # This can take 15-30 seconds depending on workspace size
-            logger.info("waiting_for_mcp_cache", wait_seconds=20)
-            await asyncio.sleep(20)
-            logger.info("mcp_cache_ready")
+            # Check if users/channels are already cached
+            if cache.is_connected:
+                from kiroween.mcp.cached_tools import _get_cache_key
+
+                users_key = _get_cache_key("search_users", {"query": ""})
+                channels_key = _get_cache_key("channels_list", {})
+
+                users_cached = await cache.exists(users_key)
+                channels_cached = await cache.exists(channels_key)
+
+                if users_cached and channels_cached:
+                    logger.info("using_cached_users_channels_skipping_wait")
+                else:
+                    # Wait for MCP server to finish caching, then prime our cache
+                    logger.info("waiting_for_mcp_cache", wait_seconds=20)
+                    await asyncio.sleep(20)
+
+                    # Prime the Redis cache with users and channels
+                    from kiroween.mcp.cached_tools import prime_user_channel_cache
+
+                    await prime_user_channel_cache()
+            else:
+                # Fallback to original behavior if Redis unavailable
+                logger.info("waiting_for_mcp_cache", wait_seconds=20)
+                await asyncio.sleep(20)
+                logger.info("mcp_cache_ready")
 
         except Exception as e:
             logger.error("slack_mcp_connection_failed", error=str(e))
@@ -85,9 +121,13 @@ class SlackMCPManager:
             }
 
     async def disconnect(self) -> None:
-        """Disconnect from MCP server."""
+        """Disconnect from MCP server and Redis cache."""
         if self._client and self._connected:
-            # Cleanup if needed
+            # Disconnect from Redis
+            cache = get_cache()
+            await cache.disconnect()
+
+            # Cleanup MCP connection
             self._connected = False
             self._tools = []
             logger.info("slack_mcp_disconnected")
