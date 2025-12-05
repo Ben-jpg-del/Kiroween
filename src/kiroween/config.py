@@ -24,6 +24,9 @@ class Settings(BaseSettings):
 
     # Slack MCP Configuration
     slack_mcp_xoxp_token: str = Field(..., description="Slack user OAuth token")
+    slack_user_id: str | None = Field(
+        default=None, description="Your Slack user ID (e.g., U01234567)"
+    )
     slack_mcp_transport: Literal["stdio", "sse", "streamable_http"] = Field(
         default="stdio", description="MCP transport protocol"
     )
